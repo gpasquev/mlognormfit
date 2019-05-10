@@ -1,40 +1,29 @@
 #!/usr/bin/env python
-# coding: utf8
-
-
-import sys, re, os
-import numpy as np
-
-import lmfit as lm
-import matplotlib.pyplot as pyp
-import matplotlib.text as matplotlibtext
-from matplotlib import gridspec
-from scipy.integrate import quad
-from scipy.stats import norm
-
-import pygap_work.magne.floglangint as fl
-
-import fithelper as h
+# -*- coding: utf-8 -*-
 
 """ Este es un módulo que tiene herramientas para ajustar un ciclo M vs H con 
     una distribución lognormal de Langevins. 
 
     ======================
-    Cómo iniciar un ajuste
+    How to use it
     ======================
 
     The module provide a function :func:`new` to load data from a file and 
     create an instance of class:`session`. Otherwise you can init a seasson 
     directly with the class initialization method.
 
-    
+    ===========
+    Modo de uso
+    ===========
+    Tiene una clase donde se gestiona el ajuste class:`session`.
+
     ============
     Dependencias
     ============
 
     Dependencias comunes
     --------------------
-    * Tiene un módulo fithelper.py que debe acmpañarlo.
+    * Tiene un módulo fithelper.py que debe acompañarlo.
     * Utiliza matplotlib para hacer gráficos.
     * Utiliza numpy.
     * Utiliza scipy. 
@@ -42,12 +31,25 @@ import fithelper as h
     Dependencia menos comunes
     -------------------------
     * Utiliza el paquete lmfit como motor de ajuste. 
-    * Utiliza floflangint (módulo de cálculo rápido de la integral de Langevin*lognormal
+    * Utiliza floflangint (módulo de cálculo rápido de la 
+        integral de Langevin*lognormal)
 
-    Tiene una clase donde se gestiona el ajuste class:`session`.
 
 
 """
+
+import os
+import numpy as np
+
+import lmfit as lm
+import matplotlib.pyplot as pyp
+from matplotlib import gridspec
+from scipy.integrate import quad
+
+# local lmodules
+from . import  floglangint as fl
+from . import  fithelper as h
+
 
 
 
@@ -55,7 +57,7 @@ import fithelper as h
 
 __longname__  = 'lognor-langevin with lmfit'
 __shortname__ = 'lonolagewi_lmfit'
-__version__   = '160223'
+__version__   = '190506'
 __author__    = 'Gustavo Pasquevich'
 
 
@@ -112,6 +114,7 @@ def fitfunc(params,x,data = None, eps = None,fastintegral = True):
     sig   = params['sig'].value
     C     = params['C'].value
     T     = params['T'].value
+    
 
     y = np.zeros(x.shape)
     if fastintegral == True:
@@ -133,43 +136,35 @@ def fitfunc(params,x,data = None, eps = None,fastintegral = True):
 
 
 class session():
-    """ Intento de una session de fiteo.
+    """ Attempt to a fitting session.
+    
+        X, Y , EY: unidimensional arrays with magentic field (X), magnetization 
+	               (or magnetic moment) (Y), and error (or fitting wheigt) (EY).
+    
 
-        La session puede iniciarse mediante el nombre del archivo donde se 
-        encuentra el cilco M vs H. Intentará abrirlo como un archivo columnas 
-        con H en la primer columna y M en la segunda. Eventualmente si esta 
-        apertura falla esquivará las priimeras 12 filas que usualmente son 
-        texto en el VSM Lakeshore de La Plata. Si el archivo tiene tercer 
-        columna la asocia al error.
-
-        El error para el ajuste se toma por default la tercer columna o uniforme. 
-        lo que ocurra primero. Sino puede cambiarse a tipo "area" mediante
-        el método :meth:`set_yE_as.`
-            r
     """
-    def __init__(self,X,Y,EY,fitfile=False,mass=None,fname='nofname'):
-        """ fname:  filename.
-            ndob :  number of doublets.
+    def __init__(self,X,Y,EY = None,fitfile=False,mass=None,fname='proof'):
+        """ X, Y , EY: unidimensional arrays with magentic field (X), magnetization 
+	               (or magnetic moment) (Y), and error (or fitting wheigt) (EY).
+	        mass: mass. Is used to convert input data from emu to emu/g. 
+	                If mass is given, is used to divide **Y** by mass. 
+                        If mass is None (not givene) nothing happens.
+  
+            fname:  filename.    // I don't know what must do this variable now!!!
             fitfile: True or {False} .  PARECE UNA VARIABLE INUTIL
             mass: {None} or number. If None  
         """
-        try: 
-            A = np.loadtxt(fname)
-        except:
-            A = np.loadtxt(fname,skiprows=12)  
+
         self.filename = os.path.basename(fname)
         self.cfilename = fname
         self.mass = mass
-        self.X = A[:,0]
-        self.Y = A[:,1]
-
-
-        try:
-            self.EY = A[:,2]
-            self.EYkind = '3rd-col'
-        except:
-            self.EY = None
+        self.X = X
+        self.Y = Y
+        self.EY = EY
+        if EY == None:
             self.EYkind = 'None'
+        else:
+            self.EYkind = '3rd-col'
 
         if mass is not None:
             self.Y = self.Y/mass
@@ -193,21 +188,27 @@ class session():
             Parameters
             ----------
             kind:
-                'area' or 'Area' set error as 'area' (defined elsewhere)
-                'None' set uniform weight. 
+                'sep': 
+                    set weigth inverse to x-difference between points.
+                    'Area', si accepetd as same value for this argument. 
+                    'Area' was inherited from previus versions. 
+                'None' or None: 
+                    set uniform weight. 
+                
+                 
         """
-        if kind == 'area' or kind == 'Area':
+        if kind == 'sep' or kind == 'area' or kind == 'Area':
             D = np.diff(self.X)
             D1 = np.append(D[0],D)
             D2 = np.append(D,D[-1])
             D = (D1+D2)/2.+1.23456e-10 
             self.EY = 1/D
-            self.EYkind = 'area'
-        if kind == 'None':
+            self.EYkind = 'sep'
+        if kind == 'None' or kind == None:
             self.EY = None
             self.EYkind = 'None'
 
-
+    
 
 
     def fit(self):
@@ -219,10 +220,10 @@ class session():
             self.Yfit = self.Y + self.result.residual*self.EY
     
         # write error report
-        print '='*80
-        print 'success:',self.result.success
-        print self.result.message
-        print lm.fit_report(self.result,show_correl=0)
+        print ('='*80)
+        print ('success:',self.result.success)
+        print (self.result.message)
+        print (lm.fit_report(self.result,show_correl=0))
         self.plot(fitresult = True)
 
     def print_pars(self,fitresult=False):
@@ -232,7 +233,7 @@ class session():
         else:
             params = self.params
 
-        print lm.fit_report(params,show_correl=0)
+        print (lm.fit_report(params,show_correl=0))
 
         mu   = params['mu'].value
         emu  = params['mu'].stderr
@@ -245,11 +246,10 @@ class session():
         emum = mum*emu + sig*mum*esig 
         SD = mum*np.sqrt( np.exp(sig**2) - 1 )
         
-        print('More info')
-        print('---------')
-        print('mean-mu = %.0f mb +/- %.1f'%(mum ,emum ))
-        print('sig = %.1f'%sig) 
-        print('SD = %.1f'%SD) 
+        print('-------------------------------')
+        print('mean-mu      = %.1f mb +/- %.1f'%(mum ,emum ))
+        print('lognorm-sig  = %.3f'%sig) 
+        print('standard-dev = %.3f'%SD) 
 
 
     def getpars(self,fname=None):
@@ -257,7 +257,7 @@ class session():
         if fname is None:
             fname = h.uigetfile()
         self.oldparams = self.params
-        print 'Getting parameters from %s'%fname
+        print ('Getting parameters from %s'%fname)
         fid = open(fname)
         A  = fid.read()
         a  = re.search('\[\[Variables\]\][\n\s\W\w]*?\[\[',A)
@@ -272,7 +272,7 @@ class session():
         self.Ynow = fitfunc(self.params,self.X)
         self.plot()
         self._snow = sum(self.Ynow)
-        print self._snow
+        print (self._snow)
 
     def getpars2(self,a):
         """ Obtiene los parámetros de otra instancia """
@@ -280,7 +280,7 @@ class session():
 
     # Manejo de parametros =====================================================
     def fix(self,inn):
-        """ If inn is an string fix the parameter inn. """
+        """ Fix the parameter inn (inn must be the parameter-name). """
         self.params[inn].vary = False
 
     def free(self,inn):
@@ -300,6 +300,7 @@ class session():
         self.params[pname].vary = False
 
     def setp(self,pname,value):
+        """ Set the **value** to the parameter **pname**. """
         self.params[pname].set(value)
         self.plot()
 
@@ -309,7 +310,8 @@ class session():
         self.params = self.result.params
 
 
-    def plot(self,fitresult=False,numfig=110):
+    def plot(self,fitresult=False,numfig=110,typediff='abs'):
+        """ plot curve, model, nand difference. """
         if fitresult == True:
             params = self.result.params
         else:
@@ -326,14 +328,16 @@ class session():
         ax0.xaxis.set_visible(False)
 
         ax1 = pyp.subplot(gs[1],sharex=ax0)
-        pyp.plot(self.X,self.Y-Yteo,color='gray')
+        if typediff == 'abs':
+            pyp.plot(self.X,self.Y-Yteo,color='gray') 
+        elif typediff == 'rel':
+            pyp.plot(self.X,self.Y/Yteo-1,color='gray')
+
         ax1.yaxis.tick_right()
-        ax1.set_axis_bgcolor('#CDCADF')
+        ax1.set_facecolor('#CDCADF')
         ax1.ticklabel_format(style='sci', axis='y')
         ax1.ticklabel_format(useOffset=True)
-
-  
-        pyp.legend(loc=0)
+ 
         pyp.xlabel('X')
         pyp.ylabel('Y')
         #pyp.xlim([-5,5])
@@ -350,7 +354,7 @@ class session():
         AXH = AXH1 + AXH2
 
 
-        pyp.figure(2001)
+        fig = pyp.figure(2001)
         ax1 = pyp.subplot(2,1,1)
         pyp.cla()
         pyp.plot(self.X, self.Y, 'k.-')
@@ -369,10 +373,11 @@ class session():
             ptext = lm.fit_report(self.params,show_correl=0)
             
         fig.text(AXX+AXW+AXX/2.,AXY+AXH,ptext,verticalalignment='top')        
-        fig.text(AXX,AXY+AXH+AXY/4.,os.path.basename(self.fname))
+        #        fig.text(AXX,AXY+AXH+AXY/4.,os.path.basename(self.fname))
         if outfname is not None:
             fig.text(AXX,AXY+AXH+2*AXY/4.,os.path.basename(outfname))
-        fig.text(1-AXX/2,0,'%s ver%s'%(__shortname__,__version__),horizontalalignment='right',color='k',style='italic')
+        fig.text(1-AXX/2,0,'%s ver%s'%(__shortname__,__version__),horizontalalignment='right',
+                 color='k',style='italic')
 
     def save(self,outfname=None,outfig=True):
         """ Save to file fitting result (if it exist) """
@@ -390,9 +395,9 @@ class session():
                 os.makedirs(fitpardir)
             outfname = h._safename(os.path.join(fitpardir,fname + '.fit'))
         else:
-            raise ValueError,'Aún no implementado'            
-        print fitpardir
-        print 'outputfilename: %s'%outfname
+            raise (ValueError,'Aún no implementado')            
+        print(fitpardir)
+        print('outputfilename: %s'%outfname)
 
         fid = open(outfname,'w')
         fid.write('script internal name (ver:%s): %s\n'%(__version__,__shortname__))    
@@ -427,19 +432,19 @@ class session():
             pyp.savefig(outfname+'.png',dpi =300)
             pyp.close()
             pyp.ion()
+            
+        
 
-def new(mass = None):
-    fname = h.uigetfile()    
-    a = session(fname,mass = mass)
+def new(mass = None,label=None,**kwarg):
+    """ **kwargs are passed directly to numpy.loadtxt """
+    fname = h.uigetfile()
+    A = np.loadtxt(fname,**kwarg)
+    x = A[:,0]
+    y = A[:,1]    
+    a = session(x,y,mass = mass,lebel=fname)
     a.plot()
     return a 
 
 
-#a = session('ciclos/121518centri100(25)4.txt')
-
-#result = lm.minimize(fitfunc, params, args=(self.X, self.Y,self.EY,self.ndob),ftol=1e-10)
 
 
-# Historial de versiones
-# 160223. La traje de otra carpeta
-# 171028. Le agergó un docstring principal y corrijo algunos errores de tipo.
