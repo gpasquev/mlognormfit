@@ -8,9 +8,10 @@
     How to use it
     ======================
 
-    The module provide a function :func:`new` to load data from a file and 
+    The module provides a function :func:`new` to load data from a file and 
     create an instance of class:`session`. Otherwise you can init a seasson 
     directly with the class initialization method.
+    
 
     ===========
     Modo de uso
@@ -18,21 +19,19 @@
     Tiene una clase donde se gestiona el ajuste class:`session`.
 
     ============
-    Dependencias
+    Dependencies
     ============
 
-    Dependencias comunes
+    usual Dependencies 
     --------------------
-    * Tiene un módulo fithelper.py que debe acompañarlo.
-    * Utiliza matplotlib para hacer gráficos.
-    * Utiliza numpy.
-    * Utiliza scipy. 
+    * matplotlib (graphs).
+    * numpy.
+    * scipy. 
     
-    Dependencia menos comunes
+    Not so usual Dependencies 
     -------------------------
-    * Utiliza el paquete lmfit como motor de ajuste. 
-    * Utiliza floflangint (módulo de cálculo rápido de la 
-        integral de Langevin*lognormal)
+    * lmfit 
+    * uncertainties
 
 
 
@@ -57,9 +56,9 @@ from . import  fithelper as h
 
 # Los ciclos se encuentran en Oe y emu.
 
-__longname__  = 'several lognor-langevin with lmfit'
-__shortname__ = 'multilonolagewi_lmfit'
-__version__   = '190506'
+__longname__  = 'multi lognormal-langevin fit with lmfit'
+__shortname__ = 'multilognorlanglmfit'
+__version__   = '190515'
 __author__    = 'Gustavo Pasquevich'
 
 
@@ -81,18 +80,20 @@ def langevin(x,a=1.):
         return y
     else:      
         return 1./np.tanh(a*x) -1./(a*x)
+    
+def lognorm(x,mu,sigma):    
+    return 1./np.sqrt(2.*pi)/x/sigma*np.exp(-(np.log(x)-mu)**2/(2*sigma**2))
+    
 def langevin_lognormal(x,mu,sigma,alpha):
     """ Lognormal distribution of Langevins functions. *x0* and *s* are the 
         parameters defining the Log-Normal distribution.
 
         f(x)*x*Lan(a*x)
-
-        31/10/15 cambio de llamado lognormal a forma explicita para poder eliminar
-                 la variable x que aparece multiplicada y dividida."""
+    """
     return 1./np.sqrt(2.*pi)/sigma*np.exp(-(np.log(x)-mu)**2./(2.*sigma**2.))*langevin(x,alpha)
 
 def integral(alpha,mu,sigma):
-    """ La integral númerica **a lo bruto**: integral entre 0 y infinito con 
+    """ numeric integral  **a lo bruto**: integral entre 0 y infinito con 
         quad.
  
         alpha, mu and sigma should be numbers (not arrays).
@@ -109,7 +110,13 @@ def integral(alpha,mu,sigma):
 
 def fitfunc(params,x,data = None, eps = None,nint=1,fastintegral = True):
     """ Fitting function prepared for lmfit. It fits a lognormal distribution
-        of Langevins. """
+        of Langevins. 
+        
+        kwarg
+        =====
+        fastintegral: not implemented, but if False, numeric integral should be 
+                      done with quad.
+    """
 
     y = np.zeros(len(x))
     C     = params['C'].value
@@ -143,9 +150,6 @@ def maglognormlangevin(x,N,mu,sig,T):
     alpha = muB*x/(kB*T) 
     y = muB*N*fl.integral(alpha,mu,sig)
     return y 
-
-def lineal(x,C,dc):
-    return dc + C*x
 
 class session():
     """ Attempt to a fitting session.
@@ -213,9 +217,9 @@ class session():
             ----------
             kind:
                 'sep': 
-                    set weigth inverse to x-difference between points.
-                    'Area', si accepetd as same value for this argument. 
-                    'Area' was inherited from previus versions. 
+                    set weight inverse to x-difference between points.
+                    'Area', is accepetd as same value for this argument. 
+                    ('Area' was inherited from previus versions.) 
                 'None' or None: 
                     set uniform weight. 
                 
@@ -271,6 +275,7 @@ class session():
         esigs = [params['sig%d'%i].stderr for i in range(self.nint)]
 
         def mapf(x):
+            """ Internal function to set cero error to those fixed parameters """
             if x == None:
                 return 0
             else:
@@ -285,13 +290,17 @@ class session():
 
         mums  = unumpy.exp(mus)*unumpy.exp(sigs**2/2.)
         #        emums = mums*emus + sigs*mums*esigs 
-        SD = mums*unumpy.sqrt( unumpy.exp(sigs**2) - 1 )
-        
-        mmuN = mums*Ns/sum(Ns)  # mean-mu-N
+        mu2ms = unumpy.exp(2*mus)*unumpy.exp(2*sigs**2)
+
+        mmuN  = sum(mums*Ns)/sum(Ns)  # mean-mu-N
+        mmu2N = sum(mu2ms*Ns)/sum(Ns)
+        SD = unumpy.sqrt(mmu2N - mmuN**2)
+        mmumu = mmuN*((SD/mmuN)**2+1)
         
         print('-------------------------------')
-        print('mean-mu      = %s mb'%(mmuN[0]))
-        print('standard-dev = %s mb'%SD[0]) 
+        print('mean-mu      = {:.4uf} mb'.format(mmuN))
+        print('stddev       = {:.4uf} mb'.format(SD)) 
+        print('<mu>_mu      = {:.4uf} mb'.format(mmumu))
         print('- - - - - - - - - - - - - - - -')
         #print('lognorm-sig  = %'%sig) 
 
@@ -304,13 +313,19 @@ class session():
         print ('Getting parameters from %s'%fname)
         fid = open(fname)
         A  = fid.read()
+        # I have use https://regex101.com/ to test and desingn regular expressions. 
         a  = re.search('\[\[Variables\]\][\n\s\W\w]*?\[\[',A)
         a1 = a.group()    
-        gg = re.findall('\s*(\S*):\s*(\S*)',a1)
+        gg = re.findall('\s*(\S*):\s*(\S*)\s(\S*)',a1)
         newparams = lm.Parameters()       
+
         for k in gg:
             if h.is_number(k[1]):
-                newparams.add(k[0],float(k[1]))
+                if k[2] == '(fixed)':
+                    vary = 0
+                else:
+                    vary = 1
+                newparams.add(k[0],float(k[1]),vary=vary)
         self.params = newparams
 
         self.Ynow = fitfunc(self.params,self.X)
@@ -319,7 +334,7 @@ class session():
         print (self._snow)
 
     def getpars2(self,a):
-        """ Obtiene los parámetros de otra instancia """
+        """ Takes parameters from other instance """
         self.params =a.params
 
     # Manejo de parametros =====================================================
@@ -332,9 +347,10 @@ class session():
         self.params[inn].vary = True
 
     def plink(self,p1,expr):
-        """ Setea el parametro p1 como expresion.
-            p1 un string con el nombre del parámetro.
-            expr: un string con la expresion. """
+        """ Defines expression for given parameter.
+        
+            p1: string with parameter name.
+            expr: expresion string. """
         self.params[p1].expr=expr
 
     def setfree(self,pname):
@@ -433,8 +449,8 @@ class session():
             # Se fija si existe una carpeta fits en el path del archivo de entrada.
             # Si no es así, la crea. Luego guarda con safename en esa carpeta el resultado del
             # ajuste con la extensión .fit y un número protector.  
-            dirr = os.path.dirname(self.fname)
-            fname = os.path.basename(self.fname)
+            dirr = os.path.dirname(self.filename)
+            fname = os.path.basename(self.filename)
             fitpardir = os.path.join(dirr,'fits/')
             if not os.path.exists(fitpardir):
                 os.makedirs(fitpardir)
@@ -446,10 +462,12 @@ class session():
 
         fid = open(outfname,'w')
         fid.write('script internal name (ver:%s): %s\n'%(__version__,__shortname__))    
-        fid.write('data-filename:%s\n'%self.fname)
+        fid.write('data-filename:%s\n'%self.filename)
         fid.write('this-filename:%s\n'%outfname)
+        fid.write('[[Definition parameters]]\n')
+        fid.write('niter: %d\n'%self.nint)
+        fid.write('weight: %s\n'%self.EYkind)
         fid.write('[[status]]\n')
-        fid.write('success:%s\n'%self.result.success)
         fid.write(self.result.message+'\n')
         fid.write(lm.fit_report(self.result)+'\n')
 
