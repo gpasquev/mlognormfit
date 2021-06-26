@@ -1,22 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-""" Este es un módulo que tiene herramientas para ajustar un ciclo M vs H con 
-    una distribución lognormal de Langevins. 
+""" 
+    This module provides tools to fit M vs H cycles with langevin 
+    lognormal-distribution.  
 
     ======================
     How to use it
     ======================
 
     The module provides a function :func:`new` to load data from a file and 
-    create an instance of class:`session`. Otherwise you can init a seasson 
-    directly with the class initialization method.
+    create an instance of class:`session`. 
     
+    Otherwise you can init a session directly with the class 
+    initialization method.
 
-    ===========
-    Modo de uso
-    ===========
-    Tiene una clase donde se gestiona el ajuste class:`session`.
+    s = session(x,y) starts the fitting session. 
+    See :class:`session` documentation to see how to go with a session fit.   
+
 
     ============
     Dependencies
@@ -73,9 +74,9 @@ def langevin(x,a=1.):
             langevin(x;a) = L(a*x) = coth(a*x) - 1/(a*x)
     """
     w = x==0
-    if np.any(w):                   #  Los condicionales aparecen para evitar la 
-        w2 = ~w                              #  singularidad removible. Ver nota
-        y = np.zeros(np.shape(x))                     #  150322 en el historial.
+    if np.any(w):                  #  Los condicionales aparecen para evitar la 
+        w2 = ~w                             #  singularidad removible. Ver nota
+        y = np.zeros(np.shape(x))                    #  150322 en el historial.
         y[w2] = 1./np.tanh(a*x[w2]) -1./(a*x[w2])
         return y
     else:      
@@ -92,7 +93,7 @@ def langevin_lognormal(x,mu,sigma,alpha):
     """
     return 1./np.sqrt(2.*pi)/sigma*np.exp(-(np.log(x)-mu)**2./(2.*sigma**2.))*langevin(x,alpha)
 
-def integral(alpha,mu,sigma):
+def integralq(alpha,mu,sigma):
     """ numeric integral  **a lo bruto**: integral entre 0 y infinito con 
         quad.
  
@@ -114,8 +115,9 @@ def fitfunc(params,x,data = None, eps = None,nint=1,fastintegral = True):
         
         kwarg
         =====
-        fastintegral: not implemented, but if False, numeric integral should be 
-                      done with quad.
+        fastintegral: -True (default), it use fast-lognormal-langvin integration.
+                      -False (not yet implemented), numeric integral should be 
+                      done with quad (todo!!!)
     """
 
     y = np.zeros(len(x))
@@ -128,8 +130,10 @@ def fitfunc(params,x,data = None, eps = None,nint=1,fastintegral = True):
         mu    = params['mu%d'%k].value
         sig   = params['sig%d'%k].value
         alpha = muB*x/kB/T
-        y += muB*N*fl.integral(alpha,mu,sig)
-    
+        if fastintegral:
+            y += muB*N*fl.integral(alpha,mu,sig)
+        else:
+            y += muB*N*np.array([integralq(a,mu,sig) for a in alpha])
     y += dc + C*x
     
     if data is None:
@@ -155,17 +159,21 @@ class session():
     """ Attempt to a fitting session.
     
         X, Y , EY: unidimensional arrays with magentic field (X), magnetization 
-	               (or magnetic moment) (Y), and error (or fitting wheigt) (EY).
+	               (or magnetic moment) (Y), and error 
+                   (or fitting wheigt) (EY).
     
-
+        s.fit()     fit
+        s.addint()  increase a log-normal distribution.
+        
     """
+    fastintegral = True
     def __init__(self,X,Y,EY = None,fitfile=False,mass=None,fname='proof'):
         """ X, Y , EY: unidimensional arrays with magentic field (X), 
-                   magnetization (or magnetic moment) (Y), 
-                   and error (or fitting wheigt) (EY).
+                   magnetization (or magnetic moment) (Y), and error (or 
+                   fitting weight) (EY).
 	        mass:  mass. Is used to convert input data from emu to emu/g. 
 	               If mass is given, is used to divide **Y** by mass. 
-                   If mass is None (not givene) nothing happens.
+                   If mass is None (not given) nothing happens.
   
             fname:  filename. // I don't know what must do this variable now!!!
             fitfile: True or {False} .  PARECE UNA VARIABLE INUTIL
@@ -200,14 +208,18 @@ class session():
         self.params.add('T', value=300, vary = 0)
         self.params.add('dc', value=0, vary = 0)
 
-    def addint(self):
-        """ Add a new lognormal distribution to fitting model """
+    def addint(self,guess=True):
+        """ Add a new lognormal distribution to fitting model."""
+        # initial values: mu  mu(n-1). sig = sig(n-1). N = N(n-1)/10.
+        
         n = self.nint
-        self.params.add('N%d'%n,   value= self.params['N%d'%(n-1)].value/10,  min=0,vary=1)
-        self.params.add('mu%d'%n,   value= 7.65,  vary=1)
-        self.params.add('sig%d'%n,   value= 1.596,  min=0,vary=1)
-        self.params.add('C',   value= -3e-8,  vary=1)
-        self.params.add('T', value=300, vary = 0)
+        self.params.add('N%d'%n, value= self.params['N%d'%(n-1)].value/10,
+                                                      min=0,vary=1)
+        self.params.add('mu%d'%n, value= self.params['mu%d'%(n-1)].value,  
+                                                            vary=1)
+        self.params.add('sig%d'%n, value= self.params['sig%d'%(n-1)].value, 
+                                                      min=0,vary=1)
+
         self.nint += 1
         
     def set_yE_as(self,kind):
@@ -229,20 +241,21 @@ class session():
             D = np.diff(self.X)
             D1 = np.append(D[0],D)
             D2 = np.append(D,D[-1])
-            D = (D1+D2)/2.+1.23456e-10 
+            D = (D1+D2)/2.+1.23456e-10    # <======== 
             self.EY = 1/D
             self.EYkind = 'sep'
-        if kind == 'None' or kind == None:
+        elif kind == 'None' or kind == None:
             self.EY = None
             self.EYkind = 'None'
-
+        else:
+            raise ValueError('%s is not a valid "kind" string. try "sep" or "None"'%kind)
     
 
 
     def fit(self):
         self.result = lm.minimize(fitfunc, self.params, 
-                                  args=(self.X, self.Y,self.EY,self.nint),
-                                  ftol=1e-10)
+                                  args = (self.X, self.Y,self.EY,self.nint),
+                                  ftol = 1e-10 )
         # calculate final result
         if self.EY is None:
             self.Yfit = self.Y + self.result.residual
@@ -256,17 +269,17 @@ class session():
         print (lm.fit_report(self.result,show_correl=0))
         self.plot(fitresult = True)
 
-    def print_pars(self,fitresult=False):
-        """ Print a list with the parameters """
+    def print_pars(self,fitresult=False,ret= False):
+        """ Print a list with the parameters and results 
+        
+            ret: if True, it does not print in screen and returns ouput string 
+        """
         if fitresult == True:
             params = self.result.params
         else:
             params = self.params
 
-
-
-        print (lm.fit_report(params,show_correl=0))
-
+        
         Ns    = [params['N%d'%i].value for i in range(self.nint)]
         eNs   = [params['N%d'%i].stderr for i in range(self.nint)]
         mus   = [params['mu%d'%i].value for i in range(self.nint)]
@@ -275,34 +288,52 @@ class session():
         esigs = [params['sig%d'%i].stderr for i in range(self.nint)]
 
         def mapf(x):
-            """ Internal function to set cero error to those fixed parameters """
+            """ Internal function to set cero error to fixed parameters. """
             if x == None:
                 return 0
             else:
                 return x
+        
         emus  = list(map(lambda x: mapf(x),emus))
         esigs = list(map(lambda x: mapf(x),esigs))
         eNs   = list(map(lambda x: mapf(x),eNs))
 
-        mus  =  np.array([un.ufloat(mus[i] ,emus[i])   for i in range(self.nint)])
-        sigs =  np.array([un.ufloat(sigs[i],esigs[i]) for i in range(self.nint)])
-        Ns   =  np.array([un.ufloat(Ns[i]  ,eNs[i])     for i in range(self.nint)])
+        mus  = np.array([un.ufloat(mus[i] ,emus[i]) for i in range(self.nint)])
+        sigs = np.array([un.ufloat(sigs[i],esigs[i]) for i in range(self.nint)])
+        Ns   = np.array([un.ufloat(Ns[i]  ,eNs[i])  for i in range(self.nint)])
 
-        mums  = unumpy.exp(mus)*unumpy.exp(sigs**2/2.)
+        mums  = unumpy.exp(mus)*unumpy.exp(sigs**2/2.)  #list of <mu>_number
         #        emums = mums*emus + sigs*mums*esigs 
-        mu2ms = unumpy.exp(2*mus)*unumpy.exp(2*sigs**2)
+        mu2ms = unumpy.exp(2*mus)*unumpy.exp(2*sigs**2) #list of <mu^2>_number
 
-        mmuN  = sum(mums*Ns)/sum(Ns)  # mean-mu-N
-        mmu2N = sum(mu2ms*Ns)/sum(Ns)
+        mmuN  = sum(mums*Ns)/sum(Ns)                    # total <mu>_number
+        mmu2N = sum(mu2ms*Ns)/sum(Ns)                   # total <mu^2>_number 
         SD = unumpy.sqrt(mmu2N - mmuN**2)
-        mmumu = mmuN*((SD/mmuN)**2+1)
+        mmumu = mmuN*((SD/mmuN)**2+1)                   # total <mu>_mu
+        N     = sum(Ns)                                 # total N
         
-        print('-------------------------------')
-        print('mean-mu      = {:.4uf} mb'.format(mmuN))
-        print('stddev       = {:.4uf} mb'.format(SD)) 
-        print('<mu>_mu      = {:.4uf} mb'.format(mmumu))
-        print('- - - - - - - - - - - - - - - -')
+        Ms = muB*sum(Ns*mums)
+        
+        Yteo = fitfunc(params, self.X,nint=self.nint)
+        ssqua = sum((self.Y-Yteo)**2)
+        
+
+        # in ot (output-text) it will building the output text
+        ot = lm.fit_report(params,show_correl=0)
+        ot += '\n' 
+        ot +='-------------------------------\n'
+        ot +='mean-mu      = {:.4uf} mb\n'.format(mmuN)
+        ot +='stddev       = {:.4uf} mb\n'.format(SD)
+        ot +='<mu>_mu      = {:.4uf} mb\n'.format(mmumu)
+        ot +='sum squares  = %.6e\n'%ssqua
+        ot +='m_s          = {:.4ue} (units)\n'.format(Ms)
+        ot +='- - - - - - - - - - - - - - - -\n'
         #print('lognorm-sig  = %'%sig) 
+
+        if ret:
+            return ot
+        else:
+            print(ot)
 
 
     def getpars(self,fname=None):
@@ -313,7 +344,9 @@ class session():
         print ('Getting parameters from %s'%fname)
         fid = open(fname)
         A  = fid.read()
-        # I have use https://regex101.com/ to test and desingn regular expressions. 
+        
+        # I have use https://regex101.com/ to test and 
+        # desingn regular next expressions. 
         a  = re.search('\[\[Variables\]\][\n\s\W\w]*?\[\[',A)
         a1 = a.group()    
         gg = re.findall('\s*(\S*):\s*(\S*)\s(\S*)',a1)
@@ -337,7 +370,7 @@ class session():
         """ Takes parameters from other instance """
         self.params =a.params
 
-    # Manejo de parametros =====================================================
+    # Manejo de parametros ====================================================
     def fix(self,inn):
         """ Fix the parameter inn (inn must be the parameter-name). """
         self.params[inn].vary = False
@@ -365,7 +398,7 @@ class session():
         self.plot()
 
     def update(self):
-        """ Actualiza e incorpora el resultado del ajuste como modelo actual """
+        """ It updates fitting results as actual model. """
         self.oldparams = self.params
         self.params = self.result.params
 
@@ -424,8 +457,9 @@ class session():
         #ax2 = fig.add_axes([AXX, AXY, AXW, AXH1])
         pyp.plot(self.X,self.Y-Yteo,color='gray')
 
-        pyp.subplots_adjust(left=AXX, bottom=AXY, right=AXX+AXW, top=AXY+AXH1+AXH2,
-                wspace=None, hspace=0)
+        pyp.subplots_adjust(left=AXX, bottom=AXY, right=AXX+AXW, 
+                            top=AXY+AXH1+AXH2,
+                            wspace=None, hspace=0)
 
         if fitresult:
             ptext = lm.fit_report(self.result,show_correl=0)
@@ -436,19 +470,23 @@ class session():
         #        fig.text(AXX,AXY+AXH+AXY/4.,os.path.basename(self.fname))
         if outfname is not None:
             fig.text(AXX,AXY+AXH+2*AXY/4.,os.path.basename(outfname))
-        fig.text(1-AXX/2,0,'%s ver%s'%(__shortname__,__version__),horizontalalignment='right',
-                 color='k',style='italic')
+        fig.text(1-AXX/2,0,'%s ver%s'%(__shortname__,__version__), 
+                           horizontalalignment='right',
+                           color='k',style='italic')
 
     def save(self,outfname=None,outfig=True):
-        """ Save to file fitting result (if it exist) """
+        """ Save to file fitting result (if it exist).
+        
+            saves results of last fit. """
 
         # la idea sería grabar en una carpeta que se encuentra un nivel mas 
         # abajo de donde obtuvo el archivo para ajustar. O mejor (más fácil) 
         # preguntar en que carpeta guardar.
         if outfname is None:
-            # Se fija si existe una carpeta fits en el path del archivo de entrada.
-            # Si no es así, la crea. Luego guarda con safename en esa carpeta el resultado del
-            # ajuste con la extensión .fit y un número protector.  
+            # Se fija si existe una carpeta fits en el path del archivo de 
+            # entrada. Si no es así, la crea. Luego guarda con safename en esa 
+            # carpeta el resultado del ajuste con la extensión .fit y un 
+            # número protector.  
             dirr = os.path.dirname(self.filename)
             fname = os.path.basename(self.filename)
             fitpardir = os.path.join(dirr,'fits/')
@@ -461,7 +499,8 @@ class session():
         print('outputfilename: %s'%outfname)
 
         fid = open(outfname,'w')
-        fid.write('script internal name (ver:%s): %s\n'%(__version__,__shortname__))    
+        fid.write('script internal name (ver:%s): %s\n'%(__version__,
+                                                         __shortname__))    
         fid.write('data-filename:%s\n'%self.filename)
         fid.write('this-filename:%s\n'%outfname)
         fid.write('[[Definition parameters]]\n')
@@ -471,7 +510,7 @@ class session():
         fid.write(self.result.message+'\n')
         fid.write(lm.fit_report(self.result)+'\n')
 
-        # Print Data, model and contributions curves----------------------------
+        # Print Data, model and contributions curves---------------------------
         fid.write('[[data]]\n')
         A = []
         A.append(self.X)
@@ -499,7 +538,9 @@ class session():
         
 
 def new(fname=None,mass = None,label=None,**kwarg):
-    """ **kwargs are passed directly to numpy.loadtxt """
+    """ get x-y data form file.
+        **kwargs are passed directly to numpy.loadtxt 
+    """
     if fname == None:
         fname = h.uigetfile()
     A = np.loadtxt(fname,**kwarg)
@@ -510,5 +551,62 @@ def new(fname=None,mass = None,label=None,**kwarg):
     return a 
 
 
+def plotdist(c,xmax=1e5,cla=True,label=None,axes=None):
+    """ Temporal function , to be moved inside session class.""" 
+    mu = list()
+    sig = list()
+    mum = list()
+    N = list()
+    
+    x = np.linspace(1,xmax,100000)
+    y = np.zeros((len(x),c.nint))
+    
+    for k in range(c.nint):
+        mu.append(c.params['mu%d'%k].value)
+        sig.append(c.params['sig%d'%k].value)
+        N.append(c.params['N%d'%k].value)
+        mum.append(np.exp(mu[-1])*np.exp(sig[-1]**2/2))
+        y[:,k] = N[k]*lognorm(x,mu[k],sig[k])/sum(N)
+        
+    mu = np.array(mu)
+    sig = np.array(sig)
+    N = np.array(N)
 
+
+    if axes == None:
+        fig1 = pyp.figure(993)
+        ax1 = pyp.axes()
+        fig1 = pyp.figure(994)
+        ax2 = pyp.axes()
+    else:
+        ax1,ax2 = axes
+        
+    if cla: 
+        ax1.cla()
+        ax2.cla()
+    ax1.set_title('number distribution')
+    ax2.set_title('$\mu$ distribution')
+ 
+    if c.nint > 1:
+        for k in range(c.nint):
+            ax1.plot(x,y[:,k],'--',label=label)
+    ax1.plot(x,np.sum(y,1),label=label)
+    ax1.legend(loc=0)    
+        
+    ymu = (x*y.T).T/np.array(mum)
+
+    if c.nint > 1:
+        for k in range(c.nint):
+            #pyp.plot(x,x*y[:,k]/mum[k],'--',label=label)
+            ax2.plot(x,ymu[:,k],'--',label=label)
+    ax2.plot(x,np.sum(ymu,1),label=label)   
+    ax2.legend(loc=0)    
+    
+    print('Polidispersivity Index estimation:')
+    print('mumedio: %s'%(np.sum(N*np.exp(mu)*np.exp(sig**2/2))/sum(N)))
+    dmedio  = np.sum(N*np.exp(mu/3)*np.exp(sig**2/18))/sum(N)
+    d2medio = np.sum(N*np.exp(2*mu/3)*np.exp(2*sig**2/9))/sum(N)
+    print('D-pdi: %s'%(np.sqrt(d2medio/dmedio**2-1)))
+    
+    return y,x
 
