@@ -201,7 +201,7 @@ class session():
         self.params = lm.Parameters()
         self.params.add('N0',   value= 9.88e13,  min=0,vary=1)
         if mass is not None:
-            self.params['N0'].set(9.88/self.mass)
+            self.params['N0'].set(9.88e13/self.mass)
         self.params.add('mu0',   value= 7.65,  vary=1)
         self.params.add('sig0',   value= 1.596,  min=0,vary=1)
         self.params.add('C',   value= -3e-8,  vary=1)
@@ -609,4 +609,6 @@ def plotdist(c,xmax=1e5,cla=True,label=None,axes=None):
     print('D-pdi: %s'%(np.sqrt(d2medio/dmedio**2-1)))
     
     return y,x
+
+
 
