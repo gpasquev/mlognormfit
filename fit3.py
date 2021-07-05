@@ -59,7 +59,7 @@ from . import  fithelper as h
 
 __longname__  = 'multi lognormal-langevin fit with lmfit'
 __shortname__ = 'multilognorlanglmfit'
-__version__   = '190515'
+__version__   = '210707'
 __author__    = 'Gustavo Pasquevich'
 
 
@@ -321,13 +321,13 @@ class session():
         # in ot (output-text) it will building the output text
         ot = lm.fit_report(params,show_correl=0)
         ot += '\n' 
-        ot +='-------------------------------\n'
-        ot +='mean-mu      = {:.4uf} mb\n'.format(mmuN)
-        ot +='stddev       = {:.4uf} mb\n'.format(SD)
-        ot +='<mu>_mu      = {:.4uf} mb\n'.format(mmumu)
-        ot +='sum squares  = %.6e\n'%ssqua
-        ot +='m_s          = {:.4ue} (units)\n'.format(Ms)
-        ot +='- - - - - - - - - - - - - - - -\n'
+        ot +='[[Derived Parameters]]\n'
+        ot +='    mean-mu      = {:.4uf} mb\n'.format(mmuN)
+        ot +='    stddev       = {:.4uf} mb\n'.format(SD)
+        ot +='    <mu>_mu      = {:.4uf} mb\n'.format(mmumu)
+        ot +='    sum squares  = %.6e\n'%ssqua
+        ot +='    m_s          = {:.4ue} (units)\n'.format(Ms)
+        #ot +='- - - - - - - - - - - - - - - -\n'
         #print('lognorm-sig  = %'%sig) 
 
         if ret:
@@ -477,7 +477,9 @@ class session():
     def save(self,outfname=None,outfig=True):
         """ Save to file fitting result (if it exist).
         
-            saves results of last fit. """
+            Saves results of last fit. 
+            It runs the same way whether method 'update' is executed or not. 
+        """
 
         # la idea sería grabar en una carpeta que se encuentra un nivel mas 
         # abajo de donde obtuvo el archivo para ajustar. O mejor (más fácil) 
@@ -509,6 +511,11 @@ class session():
         fid.write('[[status]]\n')
         fid.write(self.result.message+'\n')
         fid.write(lm.fit_report(self.result)+'\n')
+        
+        # Print the Derived Parameters
+        printtxt = self.print_pars(fitresult=True,ret=True)
+        fid.write('[[Derived Parameters]]')
+        fid.write(printtxt.split('[[Derived Parameters]]')[1])
 
         # Print Data, model and contributions curves---------------------------
         fid.write('[[data]]\n')
