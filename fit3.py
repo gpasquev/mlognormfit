@@ -156,7 +156,7 @@ def maglognormlangevin(x,N,mu,sig,T):
     return y 
 
 class session():
-    """ Attempt to a fitting session.
+    """ A fitting session.
     
         X, Y , EY: unidimensional arrays with magentic field (X), magnetization 
 	               (or magnetic moment) (Y), and error 
@@ -167,17 +167,27 @@ class session():
         
     """
     fastintegral = True
-    def __init__(self,X,Y,EY = None,fitfile=False,mass=None,fname='proof'):
+    def __init__(self,X,Y,EY = None,mass=None,fname='proof',divbymass = False):
         """ X, Y , EY: unidimensional arrays with magentic field (X), 
                    magnetization (or magnetic moment) (Y), and error (or 
                    fitting weight) (EY).
-	        mass:  mass. Is used to convert input data from emu to emu/g. 
+	        
+            mass:  mass. Is used to convert input data from emu to emu/g. 
 	               If mass is given, is used to divide **Y** by mass. 
                    If mass is None (not given) nothing happens.
   
-            fname:  filename. // I don't know what must do this variable now!!!
-            fitfile: True or {False} .  PARECE UNA VARIABLE INUTIL
-            mass: {None} or number. If None  
+            fname:  filename.
+            
+            mass: {None}, a number or a uncertainties.ufloat (see divbymas). 
+                   
+            divbymass: boolean value inidcating if **Y** should be deivided by 
+                   **mass** before fitting. This division is evaluated only 
+                   if **mass** is not None. If **divbymass** is False, the 
+                   fitting is done over **Y** as is enter. In that case the 
+                   **mass** is used only for Ms calculation.
+                   When used only for Ms calculation, it can be geven as 
+                   an uncertainties.ufloat instance. 
+                   
         """
 
         self.filename = os.path.basename(fname)
@@ -187,20 +197,20 @@ class session():
         self.Y = Y
         self.EY = EY
         self.nint  = 1
+        self.divbymass = divbymass
         if EY == None:
             self.EYkind = 'None'
         else:
             self.EYkind = '3rd-col'
 
-        if mass is not None:
+        if mass is not None and divbymass:
             self.Y = self.Y/mass
             if self.EYkind == '3rd-col':
                 Warning('The "mass" is not affecting the error column')
 
-
         self.params = lm.Parameters()
         self.params.add('N0',   value= 9.88e13,  min=0,vary=1)
-        if mass is not None:
+        if mass is not None and divbymass:
             self.params['N0'].set(9.88e13/self.mass)
         self.params.add('mu0',   value= 7.65,  vary=1)
         self.params.add('sig0',   value= 1.596,  min=0,vary=1)
@@ -248,7 +258,8 @@ class session():
             self.EY = None
             self.EYkind = 'None'
         else:
-            raise ValueError('%s is not a valid "kind" string. try "sep" or "None"'%kind)
+            raise ValueError('%s is not a valid "kind" string. \
+                             try "sep" or "None"'%kind)
     
 
 
@@ -327,6 +338,14 @@ class session():
         ot +='    <mu>_mu      = {:.4uf} mb\n'.format(mmumu)
         ot +='    sum squares  = %.6e\n'%ssqua
         ot +='    m_s          = {:.4ue} (units)\n'.format(Ms)
+        if self.mass is not None and not self.divbymass:
+            ot +='    m_s/mass     = {:.4ue} (units)\n'.format(Ms/self.mass)
+            if type(self.mass) == type(mmuN): # i.e. of is ufloat
+                ot +=19*' '+'(where mass = {:.4ue})\n'.format(self.mass)
+            else:
+                ot +=19*' '+'(where mass = {:.4e})\n'.format(self.mass)
+                
+                
         #ot +='- - - - - - - - - - - - - - - -\n'
         #print('lognorm-sig  = %'%sig) 
 
