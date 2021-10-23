@@ -9,14 +9,25 @@
     How to use it
     ======================
 
-    The module provides a function :func:`new` to load data from a file and 
-    create an instance of class:`session`. 
+    Assuming that the matrices **x** and **y** correspond to a 
+    magnetic anhysteretic curve (**x** field and **y** magnetic moment or 
+    magnetization), the fitting session can be initialized as follows:  
     
-    Otherwise you can init a session directly with the class 
-    initialization method.
+        s = session(**x**, **y**) 
+    
+    This module also provides a function :func:`new` to load data from a file 
+    and create an instance of class:`session`. The file is opened with 
+    numpy.loadtxt. It acn be passed kwargs to loadtxt. See :func:`new` 
+    docstring: 
+        
+        s = new(fname= 'fname.txt',**loadtxt_kwargs)
+    
+    or using a browser windows to coose the input file: 
+    
+        s = new(**loadtxt_kwargs)
+    
 
-    s = session(x,y) starts the fitting session. 
-    See :class:`session` documentation to see how to go with a session fit.   
+    See :class:`session` documentation to see how to work with a session fit.   
 
 
     ============
