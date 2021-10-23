@@ -109,7 +109,7 @@ def integralq(alpha,mu,sigma):
     return Q
 
 
-def fitfunc(params,x,data = None, eps = None,nint=1,fastintegral = True):
+def fitfunc(params,x,data = None, eps = None,ndist=1,fastintegral = True):
     """ Fitting function prepared for lmfit. It fits a lognormal distribution
         of Langevins. 
         
@@ -125,7 +125,7 @@ def fitfunc(params,x,data = None, eps = None,nint=1,fastintegral = True):
     dc    = params['dc'].value
     T     = params['T'].value
     
-    for k in range(nint):
+    for k in range(ndist):
         N     = params['N%d'%k].value
         mu    = params['mu%d'%k].value
         sig   = params['sig%d'%k].value
@@ -163,7 +163,7 @@ class session():
                    (or fitting wheigt) (EY).
     
         s.fit()     fit
-        s.addint()  increase a log-normal distribution.
+        s.addint()  add a log-normal distribution.
         
     """
     fastintegral = True
@@ -196,7 +196,7 @@ class session():
         self.X = X
         self.Y = Y
         self.EY = EY
-        self.nint  = 1
+        self.ndist  = 1
         self.divbymass = divbymass
         if EY == None:
             self.EYkind = 'None'
@@ -222,7 +222,7 @@ class session():
         """ Add a new lognormal distribution to fitting model."""
         # initial values: mu  mu(n-1). sig = sig(n-1). N = N(n-1)/10.
         
-        n = self.nint
+        n = self.ndist
         self.params.add('N%d'%n, value= self.params['N%d'%(n-1)].value/10,
                                                       min=0,vary=1)
         self.params.add('mu%d'%n, value= self.params['mu%d'%(n-1)].value,  
@@ -230,7 +230,7 @@ class session():
         self.params.add('sig%d'%n, value= self.params['sig%d'%(n-1)].value, 
                                                       min=0,vary=1)
 
-        self.nint += 1
+        self.ndist += 1
         
     def set_yE_as(self,kind):
         """ Set the type of weight used in the MvsH-curve fitting.
@@ -265,7 +265,7 @@ class session():
 
     def fit(self):
         self.result = lm.minimize(fitfunc, self.params, 
-                                  args = (self.X, self.Y,self.EY,self.nint),
+                                  args = (self.X, self.Y,self.EY,self.ndist),
                                   ftol = 1e-10 )
         # calculate final result
         if self.EY is None:
@@ -291,12 +291,12 @@ class session():
             params = self.params
 
         
-        Ns    = [params['N%d'%i].value for i in range(self.nint)]
-        eNs   = [params['N%d'%i].stderr for i in range(self.nint)]
-        mus   = [params['mu%d'%i].value for i in range(self.nint)]
-        emus  = [params['mu%d'%i].stderr for i in range(self.nint)]
-        sigs  = [params['sig%d'%i].value for i in range(self.nint)]
-        esigs = [params['sig%d'%i].stderr for i in range(self.nint)]
+        Ns    = [params['N%d'%i].value for i in range(self.ndist)]
+        eNs   = [params['N%d'%i].stderr for i in range(self.ndist)]
+        mus   = [params['mu%d'%i].value for i in range(self.ndist)]
+        emus  = [params['mu%d'%i].stderr for i in range(self.ndist)]
+        sigs  = [params['sig%d'%i].value for i in range(self.ndist)]
+        esigs = [params['sig%d'%i].stderr for i in range(self.ndist)]
 
         def mapf(x):
             """ Internal function to set cero error to fixed parameters. """
@@ -309,9 +309,9 @@ class session():
         esigs = list(map(lambda x: mapf(x),esigs))
         eNs   = list(map(lambda x: mapf(x),eNs))
 
-        mus  = np.array([un.ufloat(mus[i] ,emus[i]) for i in range(self.nint)])
-        sigs = np.array([un.ufloat(sigs[i],esigs[i]) for i in range(self.nint)])
-        Ns   = np.array([un.ufloat(Ns[i]  ,eNs[i])  for i in range(self.nint)])
+        mus  = np.array([un.ufloat(mus[i] ,emus[i]) for i in range(self.ndist)])
+        sigs = np.array([un.ufloat(sigs[i],esigs[i]) for i in range(self.ndist)])
+        Ns   = np.array([un.ufloat(Ns[i]  ,eNs[i])  for i in range(self.ndist)])
 
         mums  = unumpy.exp(mus)*unumpy.exp(sigs**2/2.)  #list of <mu>_number
         #        emums = mums*emus + sigs*mums*esigs 
@@ -325,7 +325,7 @@ class session():
         
         Ms = muB*sum(Ns*mums)
         
-        Yteo = fitfunc(params, self.X,nint=self.nint)
+        Yteo = fitfunc(params, self.X,ndist=self.ndist)
         ssqua = sum((self.Y-Yteo)**2)
         
 
@@ -428,7 +428,7 @@ class session():
             params = self.result.params
         else:
             params = self.params
-        Yteo = fitfunc(params, self.X,nint=self.nint)
+        Yteo = fitfunc(params, self.X,ndist=self.ndist)
 
         pyp.figure(2003)
         pyp.clf()
@@ -525,7 +525,7 @@ class session():
         fid.write('data-filename:%s\n'%self.filename)
         fid.write('this-filename:%s\n'%outfname)
         fid.write('[[Definition parameters]]\n')
-        fid.write('niter: %d\n'%self.nint)
+        fid.write('ndist: %d\n'%self.ndist)
         fid.write('weight: %s\n'%self.EYkind)
         fid.write('[[status]]\n')
         fid.write(self.result.message+'\n')
@@ -585,9 +585,9 @@ def plotdist(c,xmax=1e5,cla=True,label=None,axes=None):
     N = list()
     
     x = np.linspace(1,xmax,100000)
-    y = np.zeros((len(x),c.nint))
+    y = np.zeros((len(x),c.ndist))
     
-    for k in range(c.nint):
+    for k in range(c.ndist):
         mu.append(c.params['mu%d'%k].value)
         sig.append(c.params['sig%d'%k].value)
         N.append(c.params['N%d'%k].value)
@@ -613,16 +613,16 @@ def plotdist(c,xmax=1e5,cla=True,label=None,axes=None):
     ax1.set_title('number distribution')
     ax2.set_title('$\mu$ distribution')
  
-    if c.nint > 1:
-        for k in range(c.nint):
+    if c.ndist > 1:
+        for k in range(c.ndist):
             ax1.plot(x,y[:,k],'--',label=label)
     ax1.plot(x,np.sum(y,1),label=label)
     ax1.legend(loc=0)    
         
     ymu = (x*y.T).T/np.array(mum)
 
-    if c.nint > 1:
-        for k in range(c.nint):
+    if c.ndist > 1:
+        for k in range(c.ndist):
             #pyp.plot(x,x*y[:,k]/mum[k],'--',label=label)
             ax2.plot(x,ymu[:,k],'--',label=label)
     ax2.plot(x,np.sum(ymu,1),label=label)   
