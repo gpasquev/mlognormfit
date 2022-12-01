@@ -196,7 +196,7 @@ class session():
                    if **mass** is not None. If **divbymass** is False, the 
                    fitting is done over **Y** as is enter. In that case the 
                    **mass** is used only for Ms calculation.
-                   When used only for Ms calculation, it can be geven as 
+                   When used only for Ms calculation, **mass** can be given as 
                    an uncertainties.ufloat instance. 
                    
         """
@@ -398,7 +398,7 @@ class session():
 
     def getpars2(self,a):
         """ Takes parameters from other instance """
-        self.params =a.params
+        self.params = a.params.copy()
 
     # Manejo de parametros ====================================================
     def fix(self,inn):
