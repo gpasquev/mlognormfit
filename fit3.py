@@ -183,19 +183,27 @@ class session():
                    magnetization (or magnetic moment) (Y), and error (or 
                    fitting weight) (EY).
 	        
-            mass:  mass. Is used to convert input data from emu to emu/g. 
-	               If mass is given, is used to divide **Y** by mass. 
-                   If mass is None (not given) nothing happens.
-  
+            mass:  {None}, a number or a uncertainties.ufloat (see divbymas). 
+               
+                    It is used to convert input data from emu to emu/g 
+                    (if dovbymass = True) or to calculate Ms (if 
+                    divbymass = False)
+
+                    If mass is None (not given) nothing happens.
+                    
+                    if mass is a two values tuple: (m1,m2), it correspond to
+                    to a mass with uncertainty: m1 +/- m2 
+    
             fname:  filename.
-            
-            mass: {None}, a number or a uncertainties.ufloat (see divbymas). 
+         
                    
-            divbymass: boolean value inidcating if **Y** should be deivided by 
-                   **mass** before fitting. This division is evaluated only 
-                   if **mass** is not None. If **divbymass** is False, the 
-                   fitting is done over **Y** as is enter. In that case the 
-                   **mass** is used only for Ms calculation.
+            divbymass: boolean value inidcating if **Y** should be divided by 
+                   **mass** before fitting or not. 
+                   
+                   This division is evaluated only if **mass** is not None. 
+                   If **divbymass** is False, the fitting is done over 
+                   **Y** as entered. In that case the **mass** is used only 
+                   for Ms calculation.
                    When used only for Ms calculation, **mass** can be given as 
                    an uncertainties.ufloat instance. 
                    
@@ -203,6 +211,9 @@ class session():
 
         self.filename = os.path.basename(fname)
         self.cfilename = fname
+        
+        if type(mass) == type(tuple()):
+            mass = un.ufloat(mass[0],mass[1])
         self.mass = mass
         self.X = X
         self.Y = Y
@@ -252,7 +263,7 @@ class session():
                 'sep': 
                     set weight inverse to x-difference between points.
                     'Area', is accepetd as same value for this argument. 
-                    ('Area' was inherited from previus versions.) 
+                    ('Area' was inherited from previous versions.) 
                 'None' or None: 
                     set uniform weight. 
                 
@@ -576,7 +587,8 @@ class session():
 
 def new(fname=None,mass = None,label=None,**kwarg):
     """ get x-y data form file.
-        **kwargs are passed directly to numpy.loadtxt 
+    
+        **kwargs are passed directly to numpy.loadtxt. 
     """
     if fname == None:
         fname = h.uigetfile()
